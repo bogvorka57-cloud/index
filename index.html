@@ -1,19 +1,1190 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <title>Тест хостинга</title>
-    <style>
-        body {
-            background: white;
-            font-family: Arial, sans-serif;
-            text-align: center;
-            margin-top: 100px;
-        }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#2a3441">
+<title>glide</title>
+
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+
+<style>
+  :root {
+    --bg:        #2a3441;
+    --bg-2:      #313c4b;
+    --surface:   #3a4555;
+    --surface-2: #455062;
+    --line:      rgba(255,255,255,0.08);
+    --line-2:    rgba(255,255,255,0.05);
+    --text:      #e8ecf2;
+    --text-mid:  #9ba8b8;
+    --text-dim:  #6b7785;
+    --accent:    #9ed8d4;
+    --accent-2:  #b8e4e0;
+  }
+
+  * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
+  html, body { overscroll-behavior: none; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+    min-height: 100vh;
+    letter-spacing: -0.011em;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .display { font-weight: 500; letter-spacing: -0.035em; }
+  .mono { font-family: "JetBrains Mono", "SF Mono", ui-monospace, monospace; letter-spacing: -0.02em; }
+  .label { font-size: 11px; font-weight: 500; color: var(--text-dim); letter-spacing: 0.02em; }
+
+  /* ═══════ SPLASH ═══════ */
+  #splash {
+    position: fixed; inset: 0; z-index: 100;
+    background: var(--bg);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    transition: opacity .55s ease, visibility .55s;
+  }
+  #splash.hide { opacity: 0; visibility: hidden; }
+  .splash-logo {
+    width: 64px; height: 64px;
+    animation: logoBob 1.8s ease-in-out infinite;
+  }
+  @keyframes logoBob {
+    0%, 100% { transform: translateY(0) rotate(-4deg); }
+    50%      { transform: translateY(-10px) rotate(4deg); }
+  }
+  .splash-name {
+    margin-top: 26px;
+    font-size: 22px; font-weight: 500;
+    letter-spacing: -0.04em;
+    color: var(--text);
+    opacity: 0;
+    animation: fadeUp .7s .2s ease-out forwards;
+  }
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .splash-progress {
+    position: absolute;
+    bottom: calc(72px + env(safe-area-inset-bottom));
+    width: 140px; height: 2px;
+    background: var(--line);
+    border-radius: 99px; overflow: hidden;
+  }
+  .splash-progress::before {
+    content: ''; display: block; height: 100%; width: 30%;
+    background: var(--accent); border-radius: 99px;
+    animation: loadSlide 1.4s cubic-bezier(.45,.05,.55,.95) infinite;
+  }
+  @keyframes loadSlide {
+    0%   { transform: translateX(-130%); }
+    100% { transform: translateX(450%); }
+  }
+  .splash-loading {
+    position: absolute;
+    bottom: calc(48px + env(safe-area-inset-bottom));
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+  }
+
+  /* ═══════ APP ═══════ */
+  #app { opacity: 0; transition: opacity .4s; }
+  #app.show { opacity: 1; }
+
+  .view {
+    display: none;
+    min-height: 100vh;
+    padding-bottom: 100px;
+  }
+  .view.active { display: block; animation: viewIn .35s cubic-bezier(.2,.9,.3,1); }
+  @keyframes viewIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ═══════ HEADER ═══════ */
+  .header {
+    padding: 16px 20px 8px;
+    display: flex; align-items: center; gap: 12px;
+  }
+  .avatar {
+    width: 44px; height: 44px;
+    border-radius: 50%;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 500; color: var(--text-mid);
+    overflow: hidden;
+    flex-shrink: 0;
+    font-size: 16px;
+  }
+  .avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+  .icon-btn {
+    width: 44px; height: 44px;
+    border-radius: 50%;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text-mid);
+    transition: all .15s;
+  }
+  .icon-btn:active { background: var(--surface-2); transform: scale(.93); }
+
+  /* ═══════ BUTTONS ═══════ */
+  .btn {
+    width: 100%;
+    height: 56px;
+    border-radius: 16px;
+    font-weight: 500;
+    font-size: 15px;
+    letter-spacing: -0.01em;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    transition: transform .12s, opacity .15s;
+    border: 0;
+    cursor: pointer;
+  }
+  .btn:active { transform: scale(0.98); }
+  .btn-primary {
+    background: var(--text);
+    color: var(--bg);
+  }
+  .btn-primary:active { opacity: .85; }
+  .btn-ghost {
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--line);
+  }
+  .btn-ghost:active { background: var(--surface-2); }
+
+  /* ═══════ TAB BAR ═══════ */
+  .tabbar {
+    position: fixed;
+    bottom: calc(14px + env(safe-area-inset-bottom));
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 4px;
+    padding: 6px;
+    background: rgba(58, 69, 85, 0.7);
+    backdrop-filter: blur(28px) saturate(180%);
+    -webkit-backdrop-filter: blur(28px) saturate(180%);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 999px;
+    box-shadow:
+      0 8px 32px rgba(0,0,0,0.4),
+      inset 0 1px 0 rgba(255,255,255,0.06);
+    z-index: 9999;
+  }
+  .tab-btn {
+    height: 46px;
+    min-width: 46px;
+    padding: 0 8px;
+    border-radius: 999px;
+    display: flex; align-items: center; justify-content: center;
+    gap: 8px;
+    color: var(--text-mid);
+    transition: all .35s cubic-bezier(.4,0,.2,1);
+    overflow: hidden;
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+  }
+  .tab-btn svg {
+    width: 22px; height: 22px;
+    stroke-width: 1.8;
+    flex-shrink: 0;
+    transition: transform .35s cubic-bezier(.4,0,.2,1);
+  }
+  .tab-btn span {
+    font-size: 13px; font-weight: 500;
+    max-width: 0; opacity: 0;
+    overflow: hidden;
+    transition: all .35s cubic-bezier(.4,0,.2,1);
+    white-space: nowrap;
+  }
+  .tab-btn.active {
+    background: var(--text);
+    color: var(--bg);
+    padding: 0 16px 0 12px;
+  }
+  .tab-btn.active span {
+    max-width: 100px; opacity: 1; margin-left: 2px;
+  }
+  .tab-btn.active svg { transform: scale(1.05); }
+  .tab-btn:active svg { transform: scale(0.85); }
+
+  /* ═══════ MAP ═══════ */
+  #map {
+    height: 100vh;
+    width: 100%;
+    background: #1f2832;
+  }
+  .leaflet-container {
+    background: #1f2832 !important;
+    font-family: inherit !important;
+  }
+  .leaflet-control-attribution, .leaflet-control-zoom { display: none !important; }
+  .leaflet-marker-icon { cursor: pointer; }
+
+  /* Scooter pin — каплевидный как у Dott */
+  .scooter-pin {
+    width: 36px; height: 44px;
+    position: relative;
+    transition: transform .25s cubic-bezier(.2,.9,.3,1);
+    pointer-events: auto;
+  }
+  .scooter-pin .body {
+    position: absolute; inset: 0 0 4px 0;
+    background: rgba(58, 69, 85, 0.9);
+    backdrop-filter: blur(8px);
+    border: 1.5px solid rgba(158, 216, 212, 0.4);
+    border-radius: 50% 50% 50% 0;
+    transform: rotate(-45deg);
+    transform-origin: 50% 50%;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.45);
+  }
+  .scooter-pin svg {
+    width: 18px; height: 18px;
+    color: var(--accent);
+    transform: rotate(45deg);
+    stroke-width: 1.8;
+  }
+  .scooter-pin.active { transform: scale(1.18); }
+  .scooter-pin.active .body {
+    background: var(--accent);
+    border-color: var(--accent);
+    box-shadow:
+      0 0 0 6px rgba(158,216,212,0.18),
+      0 6px 22px rgba(158,216,212,0.45);
+  }
+  .scooter-pin.active svg { color: var(--bg); }
+
+  .parking-pin {
+    width: 26px; height: 26px;
+    border-radius: 50%;
+    background: rgba(58, 69, 85, 0.9);
+    backdrop-filter: blur(8px);
+    border: 1.5px solid rgba(158, 216, 212, 0.4);
+    color: var(--accent);
+    font-size: 12px;
+    font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  }
+
+  .me-pin {
+    width: 16px; height: 16px;
+    background: var(--accent);
+    border-radius: 50%;
+    border: 3px solid var(--bg);
+    box-shadow:
+      0 0 0 5px rgba(158,216,212,0.18),
+      0 0 16px rgba(158,216,212,0.4);
+    animation: mePulse 2.4s ease-in-out infinite;
+  }
+  @keyframes mePulse {
+    0%,100% { box-shadow: 0 0 0 5px rgba(158,216,212,0.18), 0 0 16px rgba(158,216,212,0.4); }
+    50%     { box-shadow: 0 0 0 14px transparent, 0 0 16px rgba(158,216,212,0.4); }
+  }
+
+  .map-fab {
+    position: fixed;
+    background: rgba(58, 69, 85, 0.85);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid rgba(255,255,255,0.06);
+    width: 46px; height: 46px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text);
+    z-index: 100;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.35);
+    transition: transform .15s;
+    cursor: pointer;
+  }
+  .map-fab:active { transform: scale(0.92); }
+
+  .map-top {
+    position: fixed;
+    top: 12px; left: 12px; right: 12px;
+    z-index: 100;
+    background: rgba(58, 69, 85, 0.75);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 16px;
+    padding: 12px 16px;
+    display: flex; align-items: center; gap: 10px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.3);
+  }
+  .map-top.hidden { display: none !important; }
+  .map-fab.hidden { display: none !important; }
+
+  /* ═══════ BOTTOM SHEET ═══════ */
+  .sheet {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    background: rgba(58, 69, 85, 0.95);
+    backdrop-filter: blur(28px) saturate(180%);
+    -webkit-backdrop-filter: blur(28px) saturate(180%);
+    border-top: 1px solid rgba(255,255,255,0.08);
+    border-radius: 28px 28px 0 0;
+    padding: 14px 18px calc(110px + env(safe-area-inset-bottom));
+    z-index: 200;
+    transform: translateY(105%);
+    transition: transform .4s cubic-bezier(.2,.9,.3,1.1);
+    box-shadow: 0 -8px 32px rgba(0,0,0,0.4);
+  }
+  .sheet.show { transform: translateY(0); }
+  .grab {
+    width: 40px; height: 4px;
+    background: rgba(255,255,255,0.2);
+    border-radius: 99px;
+    margin: 0 auto 16px;
+  }
+  .sheet-card {
+    background: rgba(0,0,0,0.18);
+    border: 1px solid var(--line-2);
+    border-radius: 14px;
+    padding: 12px 14px;
+  }
+
+  /* ═══════ SCANNER ═══════ */
+  .scan-stage {
+    position: relative;
+    aspect-ratio: 1;
+    background: var(--bg-2);
+    border-radius: 24px;
+    overflow: hidden;
+    border: 1px solid var(--line);
+  }
+  .scan-stage video { width: 100%; height: 100%; object-fit: cover; }
+  .scan-frame {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 65%; aspect-ratio: 1;
+    pointer-events: none;
+  }
+  .scan-frame::before, .scan-frame::after,
+  .scan-frame > i::before, .scan-frame > i::after {
+    content: ''; position: absolute;
+    width: 28px; height: 28px;
+    border: 2px solid var(--accent);
+  }
+  .scan-frame::before { top: 0; left: 0; border-right: 0; border-bottom: 0; border-radius: 6px 0 0 0; }
+  .scan-frame::after  { top: 0; right: 0; border-left: 0; border-bottom: 0; border-radius: 0 6px 0 0; }
+  .scan-frame > i::before { bottom: 0; left: 0; border-right: 0; border-top: 0; border-radius: 0 0 0 6px; }
+  .scan-frame > i::after  { bottom: 0; right: 0; border-left: 0; border-top: 0; border-radius: 0 0 6px 0; }
+  .scan-line {
+    position: absolute;
+    left: 17.5%; right: 17.5%;
+    height: 1.5px;
+    background: linear-gradient(90deg, transparent, var(--accent) 50%, transparent);
+    box-shadow: 0 0 12px var(--accent);
+    animation: scan 2.4s cubic-bezier(.4,0,.2,1) infinite;
+  }
+  @keyframes scan {
+    0%, 100% { top: 17.5%; opacity: 0; }
+    10%      { opacity: 1; }
+    50%      { top: calc(82.5% - 2px); opacity: 1; }
+    90%      { opacity: 0; }
+  }
+  .scan-idle {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 12px;
+    color: var(--text-dim);
+    background: var(--bg-2);
+  }
+  .scan-help {
+    position: absolute;
+    bottom: 14px; left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0,0,0,0.5);
+    backdrop-filter: blur(8px);
+    border-radius: 99px;
+    padding: 8px 14px;
+    font-size: 12px;
+    color: var(--text);
+    white-space: nowrap;
+    pointer-events: none;
+  }
+
+  /* ═══════ INPUT ═══════ */
+  .input-bare {
+    width: 100%;
+    background: transparent;
+    border: 0; outline: 0;
+    color: var(--text);
+    font-family: "JetBrains Mono", "SF Mono", monospace;
+    font-size: 32px;
+    font-weight: 400;
+    text-align: center;
+    letter-spacing: 0.45em;
+    padding: 16px 0 16px 0.45em;
+  }
+  .input-bare::placeholder { color: var(--text-dim); }
+  .input-line {
+    height: 1px;
+    background: var(--line);
+    transition: background .25s, height .25s;
+  }
+  .input-bare:focus + .input-line { background: var(--accent); height: 2px; }
+
+  /* ═══════ UTIL ═══════ */
+  .row { display: flex; align-items: center; }
+  .live {
+    display: inline-block;
+    width: 6px; height: 6px;
+    background: var(--accent);
+    border-radius: 50%;
+    box-shadow: 0 0 0 0 rgba(158,216,212,0.4);
+    animation: livePulse 2s ease-in-out infinite;
+  }
+  @keyframes livePulse {
+    0%,100% { box-shadow: 0 0 0 0 rgba(158,216,212,0.4); }
+    50%     { box-shadow: 0 0 0 6px rgba(158,216,212,0); }
+  }
+  .bar {
+    background: var(--line);
+    height: 4px; border-radius: 99px; overflow: hidden;
+  }
+  .bar > i { display: block; height: 100%; background: var(--accent); border-radius: 99px; transition: width .4s; }
+
+  /* mode switch in Ride */
+  .mode-fade-out { animation: fadeOut .25s ease-out forwards; }
+  .mode-fade-in  { animation: fadeIn  .3s .1s ease-out both; }
+  @keyframes fadeOut { to { opacity: 0; transform: translateY(-6px); } }
+  @keyframes fadeIn  { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+</style>
 </head>
 <body>
-    <h1>Хостинг работает ✅</h1>
-    <p>Если ты видишь эту страницу — сайт успешно запущен.</p>
+
+<!-- ═══════ SPLASH ═══════ -->
+<div id="splash">
+  <svg class="splash-logo" viewBox="0 0 64 64" fill="none">
+    <circle cx="14" cy="48" r="8" stroke="#9ed8d4" stroke-width="3"/>
+    <circle cx="50" cy="48" r="8" stroke="#9ed8d4" stroke-width="3"/>
+    <path d="M22 48 L40 48 L32 18 L24 18" stroke="#9ed8d4" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M40 18 L44 10 L52 10" stroke="#9ed8d4" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>
+  <div class="splash-name">glide</div>
+  <div class="splash-loading">загрузка</div>
+  <div class="splash-progress"></div>
+</div>
+
+<!-- ═══════ APP ═══════ -->
+<div id="app">
+
+  <!-- ═══ HOME ═══ -->
+  <section id="view-home" class="view active">
+    <header class="header">
+      <div class="avatar" id="userAvatar">G</div>
+      <div class="flex-1 min-w-0">
+        <div class="text-[15px] font-medium truncate" id="userName">Guest</div>
+        <div class="text-[11px] text-[color:var(--text-mid)] flex items-center gap-1.5 mt-0.5">
+          <span class="live"></span>
+          <span>онлайн</span>
+        </div>
+      </div>
+      <button class="icon-btn" onclick="haptic('light')">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+      </button>
+    </header>
+
+    <!-- placeholder для будущих виджетов -->
+    <div class="px-5 mt-12 text-center text-[color:var(--text-dim)] text-[13px]">
+      <div class="mb-2 opacity-60">·</div>
+      Виджеты будут здесь
+    </div>
+  </section>
+
+  <!-- ═══ RIDE / SCAN ═══ -->
+  <section id="view-ride" class="view">
+    <header class="header">
+      <div class="flex-1">
+        <div class="display text-[26px] leading-none" id="rideTitle">Поехали</div>
+        <div class="text-[12px] text-[color:var(--text-mid)] mt-1.5" id="rideSubtitle">Отсканируй QR-код</div>
+      </div>
+      <button class="icon-btn" onclick="toggleTorch()" id="torchBtn">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 2v6l-3 4v10h12V12l-3-4V2z"/>
+        </svg>
+      </button>
+    </header>
+
+    <!-- РЕЖИМ 1: SCANNER (по умолчанию) -->
+    <div id="modeScan">
+      <div class="px-5 mt-4">
+        <div class="scan-stage">
+          <video id="scanVideo" autoplay playsinline muted></video>
+          <div class="scan-frame"><i></i></div>
+          <div class="scan-line" id="scanLine"></div>
+          <div class="scan-idle" id="scanIdle">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
+              <rect x="3" y="3" width="7" height="7" rx="1"/>
+              <rect x="14" y="3" width="7" height="7" rx="1"/>
+              <rect x="3" y="14" width="7" height="7" rx="1"/>
+              <path d="M14 14h3v3M21 14v3M14 18v3M14 21h7M18 21v-3"/>
+            </svg>
+            <div class="text-[12px]">камера выключена</div>
+          </div>
+          <div class="scan-help" id="scanHelp" style="display:none">наведи на QR-код</div>
+        </div>
+        <canvas id="scanCanvas" style="display:none"></canvas>
+
+        <button class="btn btn-ghost mt-3" id="scanBtn" onclick="startScanner()">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+          <span id="scanBtnLabel">Открыть камеру</span>
+        </button>
+      </div>
+
+      <div class="px-5 mt-4">
+        <button class="btn btn-primary" onclick="switchMode('input')">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9h20M2 15h20"/><circle cx="7" cy="9" r="1.2" fill="currentColor"/><circle cx="17" cy="15" r="1.2" fill="currentColor"/></svg>
+          Ввести код
+        </button>
+      </div>
+    </div>
+
+    <!-- РЕЖИМ 2: MANUAL INPUT (скрыт по умолчанию) -->
+    <div id="modeInput" style="display:none">
+      <div class="px-5 mt-8">
+        <div class="label text-center mb-1">Код самоката</div>
+        <input type="text" id="manualCode" maxlength="6"
+               placeholder="000000"
+               class="input-bare uppercase"
+               autocomplete="off"
+               oninput="this.value = this.value.toUpperCase().replace(/[^A-Z0-9]/g,'')">
+        <div class="input-line"></div>
+        <div class="text-[11px] text-[color:var(--text-dim)] text-center mt-3">
+          6 символов на корпусе самоката
+        </div>
+      </div>
+
+      <div class="px-5 mt-7">
+        <button class="btn btn-primary" onclick="unlockScooter()">
+          Дальше
+        </button>
+        <button class="btn btn-ghost mt-3" onclick="switchMode('scan')">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+          Назад к сканеру
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ MAP ═══ -->
+  <section id="view-map" class="view" style="padding: 0;">
+    <div id="map"></div>
+  </section>
+
+  <!-- Map overlays — fixed на body чтобы tab bar точно был виден -->
+  <div class="map-top hidden" id="mapTop">
+    <span class="live"></span>
+    <div class="flex-1 min-w-0 text-[13px] truncate" id="mapCity">Поиск…</div>
+    <div class="text-[11px] text-[color:var(--text-mid)] mono"><span id="scooterCount">0</span> рядом</div>
+  </div>
+  <button class="map-fab hidden" id="locateFab" style="right: 14px; bottom: calc(170px + env(safe-area-inset-bottom));" onclick="locateMe()">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="3"/>
+      <path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>
+    </svg>
+  </button>
+  <button class="map-fab hidden" id="parkFab" style="right: 14px; bottom: calc(112px + env(safe-area-inset-bottom));" onclick="toggleParkings()">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+      <circle cx="12" cy="12" r="9"/>
+      <text x="12" y="16" text-anchor="middle" font-size="11" font-weight="700" fill="currentColor" stroke="none">P</text>
+    </svg>
+  </button>
+
+  <!-- Bottom sheet (вне карты, всегда поверх) -->
+  <div class="sheet" id="sheet">
+    <div class="grab"></div>
+    <div class="row gap-4 mb-4">
+      <div class="flex-1 min-w-0">
+        <div class="display text-[28px] mono leading-none truncate" id="sheetCode">—</div>
+        <div class="text-[12px] text-[color:var(--text-mid)] mt-1.5" id="sheetDistance">—</div>
+      </div>
+      <button onclick="closeSheet()" class="icon-btn">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+
+    <div class="row gap-3 mb-4">
+      <div class="flex-1 sheet-card">
+        <div class="label mb-2">Заряд</div>
+        <div class="display text-[20px]"><span id="sheetBat">—</span><span class="text-[color:var(--text-dim)] text-[13px]">%</span></div>
+        <div class="bar mt-2"><i id="sheetBatBar" style="width:0%"></i></div>
+      </div>
+      <div class="flex-1 sheet-card">
+        <div class="label mb-2">Пробег</div>
+        <div class="display text-[20px]"><span id="sheetRange">—</span><span class="text-[color:var(--text-dim)] text-[13px]"> км</span></div>
+      </div>
+    </div>
+
+    <button class="btn btn-primary" onclick="rideThis()">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+      Сканировать
+    </button>
+  </div>
+
+  <!-- ═══════ TAB BAR ═══════ -->
+  <nav class="tabbar">
+    <button class="tab-btn active" data-tab="home" onclick="switchTab('home')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 12l9-9 9 9M5 10v10h14V10"/>
+      </svg>
+      <span>Главная</span>
+    </button>
+    <button class="tab-btn" data-tab="ride" onclick="switchTab('ride')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="6" cy="17" r="3"/>
+        <circle cx="19" cy="17" r="3"/>
+        <path d="M9 17h7l-3-12h-3"/>
+        <path d="M16 5l1-2h3"/>
+      </svg>
+      <span>Поехали</span>
+    </button>
+    <button class="tab-btn" data-tab="map" onclick="switchTab('map')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+        <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/>
+        <line x1="8" y1="2" x2="8" y2="18"/>
+        <line x1="16" y1="6" x2="16" y2="22"/>
+      </svg>
+      <span>Карта</span>
+    </button>
+  </nav>
+</div>
+
+<script>
+// ═══════════════ TG WEBAPP ═══════════════
+const tg = window.Telegram?.WebApp;
+let tgUser = null;
+if (tg) {
+  tg.ready();
+  tg.expand();
+  tg.setHeaderColor('#2a3441');
+  tg.setBackgroundColor('#2a3441');
+  tg.disableVerticalSwipes?.();
+  tgUser = tg.initDataUnsafe?.user;
+}
+function haptic(t='light') {
+  if (!tg?.HapticFeedback) return;
+  if (['success','warning','error'].includes(t)) tg.HapticFeedback.notificationOccurred(t);
+  else tg.HapticFeedback.impactOccurred(t);
+}
+
+// ═══════════════ STATE ═══════════════
+let userLocation = null;
+let scooters = [];
+let map, userMarker, scootersLayer, parkingsLayer;
+let scooterMarkers = []; // ссылки на DOM-узлы пинов
+let parkingsVisible = true;
+let activeScooter = null;
+let currentTab = 'home';
+
+// ═══════════════ INIT ═══════════════
+window.addEventListener('load', async () => {
+  initUserProfile();
+  await detectLocation();
+  await generateScooters();   // загружаем реальные самокаты Dott
+
+  setTimeout(() => {
+    document.getElementById('splash').classList.add('hide');
+    document.getElementById('app').classList.add('show');
+    initMap();
+  }, 1100);
+});
+
+// ═══════════════ USER PROFILE ═══════════════
+function initUserProfile() {
+  if (tgUser) {
+    const name = tgUser.username ? '@' + tgUser.username : (tgUser.first_name + (tgUser.last_name ? ' ' + tgUser.last_name : ''));
+    document.getElementById('userName').textContent = name;
+    const av = document.getElementById('userAvatar');
+    if (tgUser.photo_url) av.innerHTML = `<img src="${tgUser.photo_url}" alt="">`;
+    else av.textContent = (tgUser.first_name || 'U')[0].toUpperCase();
+  } else {
+    document.getElementById('userName').textContent = '@svalshchik';
+    document.getElementById('userAvatar').textContent = 'S';
+  }
+}
+
+// ═══════════════ REAL LOCATION ═══════════════
+async function detectLocation() {
+  const apis = [
+    { url: 'https://ipapi.co/json/', map: d => ({ lat: d.latitude, lng: d.longitude, city: d.city, cc: d.country_code }) },
+    { url: 'https://ipwho.is/',      map: d => ({ lat: d.latitude, lng: d.longitude, city: d.city, cc: d.country_code }) },
+    { url: 'https://get.geojs.io/v1/ip/geo.json', map: d => ({ lat: parseFloat(d.latitude), lng: parseFloat(d.longitude), city: d.city, cc: d.country_code }) },
+  ];
+  for (const api of apis) {
+    try {
+      const r = await fetch(api.url, { signal: AbortSignal.timeout(4000) });
+      const d = await r.json();
+      const loc = api.map(d);
+      if (loc.lat && loc.lng) {
+        userLocation = loc;
+        document.getElementById('mapCity').textContent = loc.city ? `${loc.city}, ${loc.cc}` : loc.cc;
+        return;
+      }
+    } catch (e) {}
+  }
+  userLocation = { lat: 51.1095, lng: 17.0335, city: 'Wrocław', cc: 'PL' };
+  document.getElementById('mapCity').textContent = 'Wrocław, PL';
+}
+
+// ═══════════════ DOTT GBFS PUBLIC API (без токена!) ═══════════════
+// Полный список городов где работает Dott — публичный GBFS endpoint
+const DOTT_CITIES = [
+  // Польша
+  { slug: 'wroc%C5%82aw', name: 'Wrocław', cc: 'PL', lat: 51.1095, lng: 17.0335 },
+  { slug: 'warsaw',       name: 'Warsaw',  cc: 'PL', lat: 52.2297, lng: 21.0122 },
+  { slug: 'czestochowa',  name: 'Częstochowa', cc: 'PL', lat: 50.8118, lng: 19.1203 },
+  { slug: 'bytom',        name: 'Bytom',   cc: 'PL', lat: 50.3483, lng: 18.9157 },
+  // Германия
+  { slug: 'berlin',       name: 'Berlin',  cc: 'DE', lat: 52.5200, lng: 13.4050 },
+  { slug: 'hannover',     name: 'Hannover', cc: 'DE', lat: 52.3759, lng: 9.7320 },
+  { slug: 'bonn',         name: 'Bonn',    cc: 'DE', lat: 50.7374, lng: 7.0982 },
+  { slug: 'kassel',       name: 'Kassel',  cc: 'DE', lat: 51.3127, lng: 9.4797 },
+  { slug: 'gladbeck',     name: 'Gladbeck', cc: 'DE', lat: 51.5704, lng: 6.9858 },
+  { slug: 'hennef',       name: 'Hennef',  cc: 'DE', lat: 50.7726, lng: 7.2856 },
+  { slug: 'tubingen',     name: 'Tübingen', cc: 'DE', lat: 48.5210, lng: 9.0534 },
+  // Австрия
+  { slug: 'innsbruck',    name: 'Innsbruck', cc: 'AT', lat: 47.2692, lng: 11.4041 },
+  { slug: 'klagenfurt',   name: 'Klagenfurt', cc: 'AT', lat: 46.6228, lng: 14.3074 },
+  { slug: 'bregenz',      name: 'Bregenz', cc: 'AT', lat: 47.5031, lng: 9.7471 },
+  { slug: 'dornbirn',     name: 'Dornbirn', cc: 'AT', lat: 47.4125, lng: 9.7417 },
+  // ОАЭ
+  { slug: 'dubai',        name: 'Dubai',   cc: 'AE', lat: 25.2048, lng: 55.2708 },
+  { slug: 'abu-dhabi',    name: 'Abu Dhabi', cc: 'AE', lat: 24.4539, lng: 54.3773 },
+  { slug: 'sharjah',      name: 'Sharjah', cc: 'AE', lat: 25.3463, lng: 55.4209 },
+  // Финляндия
+  { slug: 'espoo',        name: 'Espoo',   cc: 'FI', lat: 60.2055, lng: 24.6559 },
+  { slug: 'kotka',        name: 'Kotka',   cc: 'FI', lat: 60.4664, lng: 26.9458 },
+  // Саудовская Аравия
+  { slug: 'makkah',       name: 'Makkah',  cc: 'SA', lat: 21.3891, lng: 39.8579 },
+  // Испания
+  { slug: 'ibiza',        name: 'Ibiza',   cc: 'ES', lat: 38.9100, lng: 1.4334 },
+  { slug: 'tarragona',    name: 'Tarragona', cc: 'ES', lat: 41.1178, lng: 1.2553 },
+  { slug: 'murcia',       name: 'Murcia',  cc: 'ES', lat: 37.9923, lng: -1.1306 },
+];
+const DOTT_BASE = 'https://gbfs.api.ridedott.com/public/v2';
+let activeCity = null;
+
+function distance(lat1, lng1, lat2, lng2) {
+  const R = 6371000;
+  const φ1 = lat1 * Math.PI/180, φ2 = lat2 * Math.PI/180;
+  const Δφ = (lat2-lat1) * Math.PI/180, Δλ = (lng2-lng1) * Math.PI/180;
+  const a = Math.sin(Δφ/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2;
+  return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
+}
+
+// Найти ближайший город Dott к локации пользователя
+function findNearestCity(lat, lng) {
+  let best = null, bestD = Infinity;
+  for (const c of DOTT_CITIES) {
+    const d = distance(lat, lng, c.lat, c.lng);
+    if (d < bestD) { bestD = d; best = c; }
+  }
+  return { city: best, distance: bestD };
+}
+
+// Загрузка реальных самокатов Dott через публичный GBFS API
+async function loadDottScooters(city) {
+  try {
+    const r = await fetch(`${DOTT_BASE}/${city.slug}/free_bike_status.json`, {
+      signal: AbortSignal.timeout(8000)
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const json = await r.json();
+    const bikes = json.data?.bikes || [];
+
+    // Фильтруем только доступные (не сломанные, не зарезервированные)
+    const available = bikes.filter(b => !b.is_disabled && !b.is_reserved);
+
+    return available.map(b => ({
+      id: b.bike_id.split('-')[0].toUpperCase(),  // короткий 8-симв ID для отображения
+      fullId: b.bike_id,
+      lat: b.lat,
+      lng: b.lon,
+      battery: Math.round((b.current_fuel_percent || 0) * 100),
+      range: Math.round((b.current_range_meters || 0) / 1000),
+      distM: 0,  // посчитаем после получения локации
+      rentalUri: b.rental_uris?.android || b.rental_uris?.ios,
+    }));
+  } catch (e) {
+    console.warn(`Dott API failed for ${city.name}:`, e.message);
+    return null;
+  }
+}
+
+// Загрузка зон геофенсинга (парковки/запреты)
+async function loadDottZones(city) {
+  try {
+    const r = await fetch(`${DOTT_BASE}/${city.slug}/geofencing_zones.json`, {
+      signal: AbortSignal.timeout(8000)
+    });
+    if (!r.ok) return null;
+    const json = await r.json();
+    return json.data?.geofencing_zones?.features || [];
+  } catch (e) { return null; }
+}
+
+async function generateScooters() {
+  // 1. Найти ближайший Dott-город
+  const { city, distance: cityDist } = findNearestCity(userLocation.lat, userLocation.lng);
+  activeCity = city;
+
+  // Если ты НЕ в зоне Dott (>50км до ближайшего города) — показываем самокаты в этом городе
+  // и переносим карту туда
+  if (cityDist > 50000) {
+    document.getElementById('mapCity').textContent = `${city.name}, ${city.cc} (демо)`;
+    userLocation.lat = city.lat;
+    userLocation.lng = city.lng;
+  } else {
+    document.getElementById('mapCity').textContent = `${city.name}, ${city.cc}`;
+  }
+
+  // 2. Грузим реальные данные
+  const real = await loadDottScooters(city);
+
+  if (real && real.length) {
+    scooters = real.map(s => ({
+      ...s,
+      distM: distance(userLocation.lat, userLocation.lng, s.lat, s.lng),
+    })).sort((a, b) => a.distM - b.distM);
+
+    // Берём только ближайшие 50 чтобы карта не лагала
+    if (scooters.length > 50) scooters = scooters.slice(0, 50);
+
+    console.log(`✓ Загружено ${scooters.length} реальных самокатов Dott в ${city.name}`);
+  } else {
+    // fallback — мок если API упал
+    scooters = [];
+    for (let i = 0; i < 14; i++) {
+      const dLat = (Math.random() - 0.5) * 0.012;
+      const dLng = (Math.random() - 0.5) * 0.018;
+      scooters.push({
+        id: 'MOCK' + (i+1).toString().padStart(2,'0'),
+        lat: userLocation.lat + dLat,
+        lng: userLocation.lng + dLng,
+        battery: ~~(Math.random() * 80) + 20,
+        range: ~~(Math.random() * 18) + 4,
+        distM: distance(userLocation.lat, userLocation.lng, userLocation.lat + dLat, userLocation.lng + dLng),
+      });
+    }
+    scooters.sort((a, b) => a.distM - b.distM);
+  }
+
+  document.getElementById('scooterCount').textContent = scooters.length;
+}
+
+// ═══════════════ TABS ═══════════════
+function switchTab(tab) {
+  haptic('light');
+  currentTab = tab;
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('view-' + tab).classList.add('active');
+  document.querySelector(`.tab-btn[data-tab="${tab}"]`).classList.add('active');
+
+  // Map overlays — показываем ТОЛЬКО на карте
+  const mapShow = (tab === 'map');
+  document.getElementById('mapTop').classList.toggle('hidden', !mapShow);
+  document.getElementById('locateFab').classList.toggle('hidden', !mapShow);
+  document.getElementById('parkFab').classList.toggle('hidden', !mapShow);
+
+  if (tab === 'map') {
+    setTimeout(() => map?.invalidateSize(), 80);
+  } else {
+    closeSheet();
+  }
+  if (tab !== 'ride') stopScanner();
+}
+
+// ═══════════════ MODE switch in Ride ═══════════════
+function switchMode(mode) {
+  haptic('light');
+  const scan = document.getElementById('modeScan');
+  const inp  = document.getElementById('modeInput');
+  if (mode === 'input') {
+    stopScanner();
+    scan.style.display = 'none';
+    inp.style.display = 'block';
+    inp.classList.remove('mode-fade-in'); void inp.offsetWidth; inp.classList.add('mode-fade-in');
+    document.getElementById('rideTitle').textContent = 'Введи код';
+    document.getElementById('rideSubtitle').textContent = '6 символов на корпусе';
+    setTimeout(() => document.getElementById('manualCode').focus(), 350);
+  } else {
+    inp.style.display = 'none';
+    scan.style.display = 'block';
+    scan.classList.remove('mode-fade-in'); void scan.offsetWidth; scan.classList.add('mode-fade-in');
+    document.getElementById('rideTitle').textContent = 'Поехали';
+    document.getElementById('rideSubtitle').textContent = 'Отсканируй QR-код';
+  }
+}
+
+// ═══════════════ MAP ═══════════════
+function initMap() {
+  const c = [userLocation.lat, userLocation.lng];
+  map = L.map('map', {
+    center: c, zoom: 15,
+    zoomControl: false, attributionControl: false,
+    preferCanvas: true, zoomSnap: 0.5,
+  });
+
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', { maxZoom: 19 }).addTo(map);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png', { maxZoom: 19, pane: 'shadowPane' }).addTo(map);
+
+  userMarker = L.marker(c, {
+    icon: L.divIcon({ className: 'me-icon-wrap', html: '<div class="me-pin"></div>', iconSize: [16,16], iconAnchor: [8,8] }),
+    interactive: false,
+  }).addTo(map);
+
+  scootersLayer = L.layerGroup().addTo(map);
+  scooterMarkers = [];
+  scooters.forEach((s, idx) => {
+    const m = L.marker([s.lat, s.lng], {
+      icon: L.divIcon({
+        className: 'scooter-icon-wrap',
+        html: `<div class="scooter-pin" data-idx="${idx}"><div class="body"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="17" r="3"/><circle cx="19" cy="17" r="3"/><path d="M9 17h7l-3-12h-3"/><path d="M16 5l1-2h3"/></svg></div></div>`,
+        iconSize: [36,44], iconAnchor: [18,40],
+      }),
+      riseOnHover: true,
+    }).addTo(scootersLayer);
+    m.on('click', () => showScooter(idx));
+    scooterMarkers.push(m);
+  });
+
+  parkingsLayer = L.layerGroup().addTo(map);
+  // Загружаем РЕАЛЬНЫЕ парковочные зоны Dott
+  if (activeCity) {
+    loadDottZones(activeCity).then(zones => {
+      if (!zones) return;
+      let added = 0;
+      zones.forEach(z => {
+        const rules = z.properties?.rules?.[0];
+        // Парковочные зоны: где разрешено бросать самокат
+        const isParking = rules?.station_parking === true ||
+                          (z.properties?.name || '').toLowerCase().includes('parking');
+        if (!isParking) return;
+
+        try {
+          // Берём первую координату полигона как точку парковки
+          const coords = z.geometry?.coordinates?.[0]?.[0]?.[0];
+          if (!coords) return;
+          const [lon, lat] = coords;
+          // Только парковки в радиусе 5 км от пользователя
+          if (distance(userLocation.lat, userLocation.lng, lat, lon) > 5000) return;
+
+          L.marker([lat, lon], {
+            icon: L.divIcon({ className: '', html: `<div class="parking-pin">P</div>`, iconSize: [26,26], iconAnchor: [13,13] }),
+            interactive: false,
+          }).addTo(parkingsLayer);
+          added++;
+        } catch (e) {}
+      });
+      console.log(`✓ Загружено ${added} парковочных зон Dott`);
+    });
+  }
+
+  // клик по карте — закрыть sheet
+  map.on('click', () => closeSheet());
+}
+
+function locateMe() {
+  haptic('medium');
+  if (!map || !userLocation) return;
+  map.flyTo([userLocation.lat, userLocation.lng], 16, { duration: 0.7 });
+}
+function toggleParkings() {
+  haptic('light');
+  parkingsVisible = !parkingsVisible;
+  if (parkingsVisible) parkingsLayer.addTo(map);
+  else map.removeLayer(parkingsLayer);
+  document.getElementById('parkFab').style.color = parkingsVisible ? 'var(--accent)' : 'var(--text)';
+}
+
+function showScooter(idx) {
+  haptic('medium');
+  const s = scooters[idx];
+  activeScooter = s;
+
+  // Снять active со всех пинов
+  document.querySelectorAll('.scooter-pin').forEach(el => el.classList.remove('active'));
+  // Поставить active на текущий через data-idx
+  const pin = document.querySelector(`.scooter-pin[data-idx="${idx}"]`);
+  if (pin) pin.classList.add('active');
+
+  document.getElementById('sheetCode').textContent = s.id;
+  document.getElementById('sheetDistance').textContent =
+    (s.distM < 1000 ? `${s.distM} м` : `${(s.distM/1000).toFixed(1)} км`) + ' от вас';
+  document.getElementById('sheetBat').textContent = s.battery;
+  document.getElementById('sheetBatBar').style.width = s.battery + '%';
+  document.getElementById('sheetRange').textContent = s.range;
+  document.getElementById('sheet').classList.add('show');
+
+  // Сдвинуть карту чтобы пин не был под sheet
+  if (map) {
+    const px = map.latLngToContainerPoint([s.lat, s.lng]);
+    px.y -= 100;
+    const newCenter = map.containerPointToLatLng(px);
+    map.panTo(newCenter, { animate: true, duration: 0.4 });
+  }
+}
+
+function closeSheet() {
+  document.getElementById('sheet').classList.remove('show');
+  document.querySelectorAll('.scooter-pin').forEach(el => el.classList.remove('active'));
+  activeScooter = null;
+}
+function rideThis() {
+  haptic('success');
+  const id = activeScooter?.id;
+  closeSheet();
+  if (id) {
+    document.getElementById('manualCode').value = id;
+    switchTab('ride');
+    setTimeout(() => switchMode('input'), 100);
+  } else {
+    switchTab('ride');
+  }
+}
+
+// ═══════════════ QR SCANNER ═══════════════
+let scanStream = null, scanInterval = null, torchOn = false;
+
+async function startScanner() {
+  haptic('medium');
+  const video = document.getElementById('scanVideo');
+  const idle  = document.getElementById('scanIdle');
+  try {
+    scanStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+    });
+    video.srcObject = scanStream;
+    idle.style.display = 'none';
+    document.getElementById('scanHelp').style.display = 'block';
+    const btn = document.getElementById('scanBtn');
+    btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg> <span>Остановить</span>`;
+    btn.onclick = stopScanner;
+    scanLoop();
+  } catch (e) {
+    if (tg) tg.showAlert('Камера недоступна: ' + e.message);
+    else alert('Камера недоступна: ' + e.message);
+  }
+}
+function stopScanner() {
+  if (scanStream) { scanStream.getTracks().forEach(t => t.stop()); scanStream = null; }
+  if (scanInterval) { clearInterval(scanInterval); scanInterval = null; }
+  document.getElementById('scanIdle').style.display = 'flex';
+  document.getElementById('scanHelp').style.display = 'none';
+  const btn = document.getElementById('scanBtn');
+  if (btn) {
+    btn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg> <span>Открыть камеру</span>`;
+    btn.onclick = startScanner;
+  }
+  torchOn = false;
+}
+function scanLoop() {
+  const video = document.getElementById('scanVideo');
+  const canvas = document.getElementById('scanCanvas');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  scanInterval = setInterval(() => {
+    if (video.readyState !== video.HAVE_ENOUGH_DATA) return;
+    canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const code = jsQR(img.data, img.width, img.height);
+    if (code?.data) handleQR(code.data);
+  }, 220);
+}
+function handleQR(data) {
+  haptic('success');
+  const m = data.match(/[A-Z0-9]{6}/i);
+  const code = m ? m[0].toUpperCase() : data.slice(0, 6).toUpperCase();
+  document.getElementById('manualCode').value = code;
+  stopScanner();
+  // Переключаем в режим ввода — пользователь видит код и жмёт «Дальше»
+  switchMode('input');
+}
+async function toggleTorch() {
+  haptic('light');
+  if (!scanStream) {
+    if (tg) tg.showAlert('Сначала открой камеру');
+    return;
+  }
+  const track = scanStream.getVideoTracks()[0];
+  const cap = track.getCapabilities?.();
+  if (cap?.torch) {
+    torchOn = !torchOn;
+    await track.applyConstraints({ advanced: [{ torch: torchOn }] });
+  } else {
+    if (tg) tg.showAlert('Фонарик не поддерживается');
+  }
+}
+function unlockScooter() {
+  const code = document.getElementById('manualCode').value.trim();
+  if (code.length < 4) {
+    haptic('error');
+    if (tg) tg.showAlert('Введи код самоката');
+    else alert('Введи код самоката');
+    return;
+  }
+  haptic('success');
+  if (tg) tg.showPopup({
+    title: 'Скоро', message: `Разблокировка ${code}\nЛогика будет добавлена позже`,
+    buttons: [{ type: 'ok' }]
+  }); else alert(`Разблокировка ${code} (демо)`);
+}
+document.addEventListener('visibilitychange', () => { if (document.hidden) stopScanner(); });
+
+// Автообновление данных Dott каждые 60 секунд
+setInterval(async () => {
+  if (!activeCity || !map) return;
+  const fresh = await loadDottScooters(activeCity);
+  if (!fresh) return;
+  scooters = fresh.map(s => ({
+    ...s,
+    distM: distance(userLocation.lat, userLocation.lng, s.lat, s.lng),
+  })).sort((a, b) => a.distM - b.distM).slice(0, 50);
+  document.getElementById('scooterCount').textContent = scooters.length;
+  // Перерисовываем пины
+  if (scootersLayer) {
+    scootersLayer.clearLayers();
+    scooterMarkers = [];
+    scooters.forEach((s, idx) => {
+      const m = L.marker([s.lat, s.lng], {
+        icon: L.divIcon({
+          className: 'scooter-icon-wrap',
+          html: `<div class="scooter-pin" data-idx="${idx}"><div class="body"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="17" r="3"/><circle cx="19" cy="17" r="3"/><path d="M9 17h7l-3-12h-3"/><path d="M16 5l1-2h3"/></svg></div></div>`,
+          iconSize: [36,44], iconAnchor: [18,40],
+        }),
+      }).addTo(scootersLayer);
+      m.on('click', () => showScooter(idx));
+      scooterMarkers.push(m);
+    });
+  }
+  console.log('✓ Обновлено самокатов:', scooters.length);
+}, 60000);
+</script>
+
 </body>
 </html>
