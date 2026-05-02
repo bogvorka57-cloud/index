@@ -9,7 +9,9 @@
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 
 <style>
@@ -231,6 +233,8 @@
     height: 100vh;
     width: 100%;
     background: #1f2832;
+    position: relative;
+    z-index: 1;
   }
   .leaflet-container {
     background: #1f2832 !important;
@@ -238,6 +242,44 @@
   }
   .leaflet-control-attribution, .leaflet-control-zoom { display: none !important; }
   .leaflet-marker-icon { cursor: pointer; }
+  /* Все leaflet panes остаются ниже наших overlays */
+  .leaflet-pane,
+  .leaflet-top,
+  .leaflet-bottom { z-index: 400 !important; }
+  .leaflet-popup-pane { z-index: 500 !important; }
+
+  /* Cluster pin — стиль Dott (капсула с иконкой и числом) */
+  .cluster-pin {
+    background: rgba(58, 69, 85, 0.92);
+    backdrop-filter: blur(10px);
+    border: 1.5px solid rgba(158, 216, 212, 0.4);
+    border-radius: 99px;
+    height: 32px;
+    padding: 0 12px 0 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--accent);
+    font-weight: 600;
+    font-size: 13px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    white-space: nowrap;
+  }
+  .cluster-pin svg {
+    width: 16px; height: 16px;
+    stroke-width: 1.8;
+    flex-shrink: 0;
+  }
+  .marker-cluster-small,
+  .marker-cluster-medium,
+  .marker-cluster-large {
+    background: transparent !important;
+  }
+  .marker-cluster-small div,
+  .marker-cluster-medium div,
+  .marker-cluster-large div {
+    background: transparent !important;
+  }
 
   /* Scooter pin — каплевидный как у Dott */
   .scooter-pin {
@@ -274,16 +316,15 @@
   .scooter-pin.active svg { color: var(--bg); }
 
   .parking-pin {
-    width: 26px; height: 26px;
+    width: 16px; height: 16px;
     border-radius: 50%;
-    background: rgba(58, 69, 85, 0.9);
-    backdrop-filter: blur(8px);
-    border: 1.5px solid rgba(158, 216, 212, 0.4);
+    background: rgba(158, 216, 212, 0.18);
+    border: 1px solid rgba(158, 216, 212, 0.5);
     color: var(--accent);
-    font-size: 12px;
+    font-size: 8px;
     font-weight: 700;
     display: flex; align-items: center; justify-content: center;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.25);
   }
 
   .me-pin {
@@ -311,7 +352,7 @@
     border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
     color: var(--text);
-    z-index: 100;
+    z-index: 9000;
     box-shadow: 0 4px 14px rgba(0,0,0,0.35);
     transition: transform .15s;
     cursor: pointer;
@@ -321,7 +362,7 @@
   .map-top {
     position: fixed;
     top: 12px; left: 12px; right: 12px;
-    z-index: 100;
+    z-index: 9000;
     background: rgba(58, 69, 85, 0.75);
     backdrop-filter: blur(24px) saturate(180%);
     -webkit-backdrop-filter: blur(24px) saturate(180%);
@@ -344,7 +385,7 @@
     border-top: 1px solid rgba(255,255,255,0.08);
     border-radius: 28px 28px 0 0;
     padding: 14px 18px calc(110px + env(safe-area-inset-bottom));
-    z-index: 200;
+    z-index: 9500;
     transform: translateY(105%);
     transition: transform .4s cubic-bezier(.2,.9,.3,1.1);
     box-shadow: 0 -8px 32px rgba(0,0,0,0.4);
@@ -870,10 +911,7 @@ async function generateScooters() {
       ...s,
       distM: distance(userLocation.lat, userLocation.lng, s.lat, s.lng),
     })).sort((a, b) => a.distM - b.distM);
-
-    // Берём только ближайшие 50 чтобы карта не лагала
-    if (scooters.length > 50) scooters = scooters.slice(0, 50);
-
+    // Показываем ВСЕ самокаты по городу — кластеризация в карте сама сгруппирует
     console.log(`✓ Загружено ${scooters.length} реальных самокатов Dott в ${city.name}`);
   } else {
     // fallback — мок если API упал
@@ -958,7 +996,29 @@ function initMap() {
     interactive: false,
   }).addTo(map);
 
-  scootersLayer = L.layerGroup().addTo(map);
+  // Кластеризация — как в Dott (при отдалении показывает "10+", "50+" и т.д.)
+  scootersLayer = L.markerClusterGroup({
+    maxClusterRadius: 55,
+    spiderfyOnMaxZoom: false,
+    showCoverageOnHover: false,
+    disableClusteringAtZoom: 17,  // на максимальном зуме показываем все по отдельности
+    iconCreateFunction: (cluster) => {
+      const count = cluster.getChildCount();
+      let label;
+      if (count >= 80) label = '80+';
+      else if (count >= 50) label = '50+';
+      else if (count >= 20) label = '20+';
+      else if (count >= 10) label = '10+';
+      else label = String(count);
+      return L.divIcon({
+        className: 'cluster-icon-wrap',
+        html: `<div class="cluster-pin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="17" r="3"/><circle cx="19" cy="17" r="3"/><path d="M9 17h7l-3-12h-3"/><path d="M16 5l1-2h3"/></svg><span>${label}</span></div>`,
+        iconSize: null,
+        iconAnchor: [25, 16],
+      });
+    },
+  });
+
   scooterMarkers = [];
   scooters.forEach((s, idx) => {
     const m = L.marker([s.lat, s.lng], {
@@ -968,40 +1028,41 @@ function initMap() {
         iconSize: [36,44], iconAnchor: [18,40],
       }),
       riseOnHover: true,
-    }).addTo(scootersLayer);
+    });
     m.on('click', () => showScooter(idx));
+    scootersLayer.addLayer(m);
     scooterMarkers.push(m);
   });
+  map.addLayer(scootersLayer);
 
   parkingsLayer = L.layerGroup().addTo(map);
-  // Загружаем РЕАЛЬНЫЕ парковочные зоны Dott
+  // Загружаем РЕАЛЬНЫЕ парковочные зоны Dott по всему городу
   if (activeCity) {
     loadDottZones(activeCity).then(zones => {
       if (!zones) return;
       let added = 0;
       zones.forEach(z => {
         const rules = z.properties?.rules?.[0];
-        // Парковочные зоны: где разрешено бросать самокат
         const isParking = rules?.station_parking === true ||
                           (z.properties?.name || '').toLowerCase().includes('parking');
         if (!isParking) return;
 
         try {
-          // Берём первую координату полигона как точку парковки
-          const coords = z.geometry?.coordinates?.[0]?.[0]?.[0];
-          if (!coords) return;
-          const [lon, lat] = coords;
-          // Только парковки в радиусе 5 км от пользователя
-          if (distance(userLocation.lat, userLocation.lng, lat, lon) > 5000) return;
+          // Центр полигона = центр парковки
+          const ring = z.geometry?.coordinates?.[0]?.[0];
+          if (!ring || !ring.length) return;
+          let cx = 0, cy = 0;
+          ring.forEach(([lon, lat]) => { cx += lon; cy += lat; });
+          cx /= ring.length; cy /= ring.length;
 
-          L.marker([lat, lon], {
-            icon: L.divIcon({ className: '', html: `<div class="parking-pin">P</div>`, iconSize: [26,26], iconAnchor: [13,13] }),
+          L.marker([cy, cx], {
+            icon: L.divIcon({ className: '', html: `<div class="parking-pin">P</div>`, iconSize: [16,16], iconAnchor: [8,8] }),
             interactive: false,
           }).addTo(parkingsLayer);
           added++;
         } catch (e) {}
       });
-      console.log(`✓ Загружено ${added} парковочных зон Dott`);
+      console.log(`✓ Загружено ${added} парковок Dott`);
     });
   }
 
@@ -1158,30 +1219,29 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) stopS
 
 // Автообновление данных Dott каждые 60 секунд
 setInterval(async () => {
-  if (!activeCity || !map) return;
+  if (!activeCity || !map || !scootersLayer) return;
   const fresh = await loadDottScooters(activeCity);
   if (!fresh) return;
   scooters = fresh.map(s => ({
     ...s,
     distM: distance(userLocation.lat, userLocation.lng, s.lat, s.lng),
-  })).sort((a, b) => a.distM - b.distM).slice(0, 50);
+  })).sort((a, b) => a.distM - b.distM);
   document.getElementById('scooterCount').textContent = scooters.length;
-  // Перерисовываем пины
-  if (scootersLayer) {
-    scootersLayer.clearLayers();
-    scooterMarkers = [];
-    scooters.forEach((s, idx) => {
-      const m = L.marker([s.lat, s.lng], {
-        icon: L.divIcon({
-          className: 'scooter-icon-wrap',
-          html: `<div class="scooter-pin" data-idx="${idx}"><div class="body"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="17" r="3"/><circle cx="19" cy="17" r="3"/><path d="M9 17h7l-3-12h-3"/><path d="M16 5l1-2h3"/></svg></div></div>`,
-          iconSize: [36,44], iconAnchor: [18,40],
-        }),
-      }).addTo(scootersLayer);
-      m.on('click', () => showScooter(idx));
-      scooterMarkers.push(m);
+  // Перерисовываем пины через MarkerCluster
+  scootersLayer.clearLayers();
+  scooterMarkers = [];
+  scooters.forEach((s, idx) => {
+    const m = L.marker([s.lat, s.lng], {
+      icon: L.divIcon({
+        className: 'scooter-icon-wrap',
+        html: `<div class="scooter-pin" data-idx="${idx}"><div class="body"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="17" r="3"/><circle cx="19" cy="17" r="3"/><path d="M9 17h7l-3-12h-3"/><path d="M16 5l1-2h3"/></svg></div></div>`,
+        iconSize: [36,44], iconAnchor: [18,40],
+      }),
     });
-  }
+    m.on('click', () => showScooter(idx));
+    scootersLayer.addLayer(m);
+    scooterMarkers.push(m);
+  });
   console.log('✓ Обновлено самокатов:', scooters.length);
 }, 60000);
 </script>
